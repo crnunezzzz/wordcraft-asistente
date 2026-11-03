@@ -47,21 +47,64 @@ impl Editor for Driven<'_> {
     }
 }
 
-pub struct AssistantHost(Desktop);
+struct AssistantHost(Desktop);
+
+thread_local! {
+    /// The assistant beside this process's window (eframe runs every frame on one thread). Held
+    /// here rather than in `main.rs`'s `App`, so merging the original project's `main.rs` only
+    /// meets the four calls below.
+    static HOST: std::cell::RefCell<Option<AssistantHost>> = const { std::cell::RefCell::new(None) };
+}
+
+fn with(f: impl FnOnce(&mut AssistantHost)) {
+    HOST.with(|cell| {
+        if let Ok(mut host) = cell.try_borrow_mut() {
+            f(host.get_or_insert_with(AssistantHost::new));
+        }
+    });
+}
+
+/// Before the editor's frame logic.
+pub fn frame(ctx: &egui::Context, app: &mut WordApp) {
+    // This build updates itself from this fork's releases (`wordcraft_assistant::update`): the
+    // original project's updater would install the official WordCraft over it, without the
+    // assistant. Turned off before the editor's first logic tick, which would start its check.
+    app.set_startup_update_check(false);
+    with(|host| host.frame(ctx, app));
+}
+
+/// Before the editor's UI: the panel takes the right side of the window.
+pub fn panel(ui: &mut egui::Ui, app: &mut WordApp) {
+    with(|host| host.panel(ui, app));
+}
+
+/// After the editor's UI: the ribbon's Asistente tab, the floating button, the panel's actions.
+pub fn finish(ctx: &egui::Context, app: &mut WordApp) {
+    with(|host| host.finish(ctx, app));
+}
+
+/// Only an assistant that was started has anything to save.
+pub fn on_exit() {
+    HOST.with(|cell| {
+        if let Ok(mut host) = cell.try_borrow_mut()
+            && let Some(host) = host.as_mut()
+        {
+            host.on_exit();
+        }
+    });
+}
 
 impl AssistantHost {
-    pub fn new() -> Self {
+    fn new() -> Self {
         let dir = wordcraft_control_key::settings_dir().unwrap_or_else(|| std::env::temp_dir().join("WordCraft"));
         Self(Desktop::new("WordCraft", &BRANDING, dir))
     }
 
-    /// Before the editor's frame logic.
-    pub fn frame(&mut self, ctx: &egui::Context, app: &mut WordApp) {
+    fn frame(&mut self, ctx: &egui::Context, app: &mut WordApp) {
         self.0.frame(ctx, &mut Driven(app));
     }
 
-    /// Before the editor's UI: the panel takes the right side of the window.
-    pub fn panel(&mut self, ui: &mut egui::Ui, app: &mut WordApp) {
+    fn panel(&mut self, ui: &mut egui::Ui, app: &mut WordApp) {
         if let Some(host) = &mut app.services.host_toolbar {
             host.assistant_open = self.0.assistant.open;
             host.busy = self.0.busy();
@@ -69,17 +112,18 @@ impl AssistantHost {
         self.0.panel(ui);
     }
 
-    /// After the editor's UI: the ribbon's Asistente tab, the floating button, the panel's actions.
-    pub fn finish(&mut self, ctx: &egui::Context, app: &mut WordApp) {
+    fn finish(&mut self, ctx: &egui::Context, app: &mut WordApp) {
         match app.services.host_toolbar.as_mut().and_then(|h| h.action.take()) {
             Some("assistant") => self.0.toggle(),
             Some("settings") => self.0.open_settings(),
+            // Help › Check for Updates in this build: this fork's releases, not the original's.
+            Some("check_update") => self.0.check_now(),
             _ => {}
         }
         self.0.finish(ctx, &mut Driven(app));
     }
 
-    pub fn on_exit(&mut self) {
+    fn on_exit(&mut self) {
         self.0.on_exit();
     }
 }

@@ -7,6 +7,46 @@ pub struct HostToolbar {
     pub status: String,
 }
 
+/// Help › Check for Updates: true when the host checks its own releases instead (a build with
+/// the assistant must not be replaced by the original project's, which has none).
+pub fn check_for_updates(app: &mut crate::WordApp) -> bool {
+    match &mut app.services.host_toolbar {
+        Some(host) => {
+            host.action = Some("check_update");
+            true
+        }
+        None => false,
+    }
+}
+
+/// The ribbon tab that opens the host's assistant.
+pub const TAB: &str = "Asistente";
+
+/// Put the host's tab after Help (or last), when the host has one. The ribbon's only seams are
+/// these three calls, so merging the original project rarely touches them.
+pub fn add_tab(app: &crate::WordApp, tabs: &mut Vec<(String, bool)>) {
+    if app.services.host_toolbar.is_some() {
+        let index = tabs.iter().position(|(name, _)| name == "Help").map_or(tabs.len(), |i| i + 1);
+        tabs.insert(index, (TAB.into(), true));
+    }
+}
+
+/// Whether the host's tab shows as selected (`None`: `tab` is not the host's).
+pub fn active(app: &crate::WordApp, tab: &str) -> Option<bool> {
+    (tab == TAB).then(|| app.services.host_toolbar.as_ref().is_some_and(|h| h.assistant_open))
+}
+
+/// A click on `tab`: true when it was the host's tab (the host opens its panel).
+pub fn clicked(app: &mut crate::WordApp, tab: &str) -> bool {
+    if tab != TAB {
+        return false;
+    }
+    if let Some(host) = &mut app.services.host_toolbar {
+        host.action = Some("assistant");
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use egui_kittest::kittest::Queryable;
