@@ -39,7 +39,7 @@ impl Editor {
                 FileDialogRequest::Open { purpose } | FileDialogRequest::OpenMany { purpose } => {
                     json!({"op":"open","ticket":ticket,"purpose":purpose})
                 }
-                FileDialogRequest::Save { name } => json!({"op":"save_picker","ticket":ticket,"name":name}),
+                FileDialogRequest::Save { name, .. } => json!({"op":"save_picker","ticket":ticket,"name":name}),
             };
             match dialog_platform.exchange(request) {
                 Ok(_) => {
@@ -95,8 +95,8 @@ impl Editor {
     pub fn logic(&mut self, ctx: &Context) {
         self.app.logic(ctx);
     }
-    pub fn raw_input(&mut self, raw: &mut egui::RawInput) {
-        self.app.raw_input_hook(raw);
+    pub fn raw_input(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
+        self.app.raw_input_hook(ctx, raw);
     }
     pub fn ui(&mut self, ui: &mut Ui) {
         self.app.ui(ui);
