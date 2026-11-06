@@ -457,6 +457,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 ui.data_mut(|d| d.insert_temp(pending_id, x));
                 ui.ctx().request_repaint();
             }
+            crate::host_toolbar::ribbon_pin(ui, app);
         });
 }
 
