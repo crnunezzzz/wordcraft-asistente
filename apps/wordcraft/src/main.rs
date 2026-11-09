@@ -553,7 +553,11 @@ fn main() -> eframe::Result {
         // This build is installed as a plain program, not the official Flatpak: on Automatic it
         // opens natively on a Wayland session like the official app does (`WORDCRAFT_X11=1`
         // keeps XWayland), instead of under XWayland with a second title bar.
-        if x11 && setting == wordcraft_ui_egui::DisplayServer::Auto && std::env::var_os("WORDCRAFT_WAYLAND").is_none() && assistant_host::native_wayland() {
+        if x11
+            && setting == wordcraft_ui_egui::DisplayServer::Auto
+            && std::env::var_os("WORDCRAFT_WAYLAND").is_none()
+            && assistant_host::native_wayland()
+        {
             x11 = false;
             why = format!("{why}; this build opens natively on Wayland (WORDCRAFT_X11=1 for XWayland)");
         }
