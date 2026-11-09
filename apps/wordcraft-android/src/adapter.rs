@@ -70,7 +70,8 @@ impl Editor {
                 host_toolbar: Some(Default::default()),
                 file_dialog: Some(hook),
                 clipboard_html: Some(Box::new(move || html_clipboard.clipboard("html"))),
-                set_clipboard_html: Some(Box::new(move |html, text, _mathml| copy_clipboard.copy_html(html, text).is_ok())),
+                // Android's clipboard takes text and HTML; RTF and MathML have no Android format.
+                set_clipboard_rich: Some(Box::new(move |text, html, _rtf, _mathml| copy_clipboard.copy_html(html, text).is_ok())),
                 clipboard_picture: Some(Box::new(move || {
                     picture_clipboard.clipboard_image().map(wordcraft_ui_egui::paste_picture::ClipboardPicture::Encoded)
                 })),
