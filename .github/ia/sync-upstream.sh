@@ -15,25 +15,71 @@
 # - docs/brand/: the ArtCraft logos stay removed, in the README too: their licence
 #   (docs/brand/LICENSE-brand.txt) makes a published modified version remove them.
 # Then it keeps the assistant's craft-ui on the same craft-libs rev as crates/ui-egui.
+#
+# The merge base. The original rewrites its `release` branch at every release: «Release x.y.z» is
+# a commit of its own on top of main, and the next release does not descend from it. A plain
+# `git merge` then takes an old commit of main as the base, sees the last release's changes as
+# ours, and conflicts on the version line at every release, and on every file the release commit
+# touched. So the script records the upstream commit it merged in .github/ia/upstream.rev, and
+# the next merge uses that commit as its base (through two temporary `git replace --graft` refs,
+# removed before the script returns): only the lines this fork really changed can conflict.
 set -euo pipefail
 
 ref=${1:?usage: sync-upstream.sh <upstream-ref>}
 : "${APP:?set APP (wordcraft, gridcraft, deckcraft)}"
 rm -f conflicts.txt
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
 
-if git merge-base --is-ancestor "$ref" HEAD; then
+REV_FILE=.github/ia/upstream.rev
+new=$(git rev-parse --verify "$ref^{commit}")
+
+if git merge-base --is-ancestor "$new" HEAD; then
     echo "Already up to date with $ref."
     exit 0
 fi
+
+# Grafts never outlive the script: a stale one would change what every later git command sees.
+drop_grafts() {
+    git for-each-ref --format='%(refname)' refs/replace | while IFS= read -r r; do
+        git update-ref -d "$r"
+    done
+}
+drop_grafts
+trap 'drop_grafts; rm -rf "$tmp"' EXIT
+
+old=""
+if [ -f "$REV_FILE" ]; then
+    old=$(tr -d '[:space:]' < "$REV_FILE")
+    # Only a commit that is really in our history can be the base.
+    if ! git cat-file -e "$old^{commit}" 2> /dev/null || ! git merge-base --is-ancestor "$old" HEAD; then
+        echo "::warning::$REV_FILE names $old, which is not in this history: merging with git's own base."
+        old=""
+    fi
+fi
+if [ -n "$old" ] && [ "$old" != "$(git merge-base HEAD "$new")" ]; then
+    echo "Merging $ref on the base of the last merged upstream commit, $old."
+    git replace --graft HEAD "$old"
+    git replace --graft "$new" "$old"
+fi
+
+# Written into the merge commit itself, so the record and the merge cannot drift apart.
+record_rev() {
+    printf '%s\n' "$new" > "$REV_FILE"
+    git add -- "$REV_FILE"
+}
 
 # The last line of our section at the top of README.md.
 FORK_END='<!-- fin de la sección del fork -->'
 
 ours_only() { case "$1" in docs/android.md | docs/asistente-*.md | packaging/*/*-IA.txt | packaging/*/install-ia.*) return 0 ;; *) return 1 ;; esac; }
 
-if ! git merge --no-edit --no-ff "$ref"; then
+merged=0
+git merge --no-commit --no-ff "$ref" || merged=$?
+drop_grafts
+if [ "$merged" -eq 0 ]; then
+    record_rev
+    git commit --no-edit
+else
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         case "$f" in
@@ -65,6 +111,7 @@ if ! git merge --no-edit --no-ff "$ref"; then
         esac
         git add -- "$f"
     done < <(git diff --name-only --diff-filter=U)
+    record_rev
     remaining=$(git diff --name-only --diff-filter=U)
     if [ -n "$remaining" ]; then
         printf '%s\n' "$remaining" > conflicts.txt
