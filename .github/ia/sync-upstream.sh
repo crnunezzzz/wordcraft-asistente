@@ -3,6 +3,7 @@
 # come back with every merge and leaving only real code conflicts for a person (or Claude).
 #
 # Usage: APP=wordcraft .github/ia/sync-upstream.sh <upstream-ref>
+#        APP=wordcraft .github/ia/sync-upstream.sh --finish   (after resolving the conflicts)
 # Exit:  0 merged (or already up to date) and committed · 2 code conflicts remain (listed in
 #        conflicts.txt, the merge is left in progress) · anything else: an error.
 #
@@ -25,10 +26,53 @@
 # removed before the script returns): only the lines this fork really changed can conflict.
 set -euo pipefail
 
-ref=${1:?usage: sync-upstream.sh <upstream-ref>}
+ref=${1:?usage: sync-upstream.sh <upstream-ref> | --finish}
 : "${APP:?set APP (wordcraft, gridcraft, deckcraft)}"
 rm -f conflicts.txt
 tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# What follows every merge, whoever settled its conflicts.
+after_merge() {
+    # The ArtCraft logos stay out of this modified version, whatever the merge brought back.
+    git rm -q --ignore-unmatch -- docs/brand/*.svg docs/brand/*.png 2> /dev/null || true
+    perl -0pi -e 's{<p align="center">\s*<a href="https://getartcraft\.com/">.*?</a>.*?</p>\n\n?}{}gs' README.md
+    git add -A README.md docs/brand 2> /dev/null || true
+    if ! git diff --cached --quiet; then
+        git commit -m "IA sync: the ArtCraft logos stay out of the modified version"
+    fi
+
+    # The assistant's combo box comes from craft-ui: keep it on the editor's craft-libs rev, so one
+    # copy is built and its look follows the editor's.
+    rev=$(sed -n 's/^craft-ui = { git = "[^"]*", rev = "\([0-9a-f]\{40\}\)".*/\1/p' crates/ui-egui/Cargo.toml | head -n1)
+    manifest="apps/$APP-assistant/Cargo.toml"
+    if [ -n "$rev" ] && [ -f "$manifest" ]; then
+        sed -i "s/^\(craft-ui = { git = \"[^\"]*\", rev = \"\)[0-9a-f]\{40\}\"/\1$rev\"/" "$manifest"
+    fi
+
+    # The lock file follows the merged manifests (new crates of ours, versions of theirs).
+    cargo metadata --format-version 1 > /dev/null
+    git add -A Cargo.lock "$manifest" 2> /dev/null || true
+    if ! git diff --cached --quiet; then
+        git commit -m "IA sync: lock file and assistant dependencies follow the merged manifests"
+    fi
+}
+
+if [ "$ref" = "--finish" ]; then
+    if [ -n "$(git diff --name-only --diff-filter=U)" ] || git grep -nE '^(<<<<<<<|>>>>>>>) ' -- . ':!*.md' > /dev/null; then
+        echo "Conflicts are still unresolved."
+        exit 2
+    fi
+    git add -A
+    # Nothing to commit when the merge was clean and only our own crates needed a fix.
+    if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+        git commit --no-edit
+    elif ! git diff --cached --quiet; then
+        git commit -m "IA sync: our crates follow the original's changes"
+    fi
+    after_merge
+    exit 0
+fi
 
 REV_FILE=.github/ia/upstream.rev
 new=$(git rev-parse --verify "$ref^{commit}")
@@ -122,25 +166,5 @@ else
     git commit --no-edit
 fi
 
-# The ArtCraft logos stay out of this modified version, whatever the merge brought back.
-git rm -q --ignore-unmatch -- docs/brand/*.svg docs/brand/*.png 2> /dev/null || true
-perl -0pi -e 's{<p align="center">\s*<a href="https://getartcraft\.com/">.*?</a>.*?</p>\n\n?}{}gs' README.md
-git add -A README.md docs/brand 2> /dev/null || true
-if ! git diff --cached --quiet; then
-    git commit -m "IA sync: the ArtCraft logos stay out of the modified version"
-fi
 
-# The assistant's combo box comes from craft-ui: keep it on the editor's craft-libs rev, so one
-# copy is built and its look follows the editor's.
-rev=$(sed -n 's/^craft-ui = { git = "[^"]*", rev = "\([0-9a-f]\{40\}\)".*/\1/p' crates/ui-egui/Cargo.toml | head -n1)
-manifest="apps/$APP-assistant/Cargo.toml"
-if [ -n "$rev" ] && [ -f "$manifest" ]; then
-    sed -i "s/^\(craft-ui = { git = \"[^\"]*\", rev = \"\)[0-9a-f]\{40\}\"/\1$rev\"/" "$manifest"
-fi
-
-# The lock file follows the merged manifests (new crates of ours, versions of theirs).
-cargo metadata --format-version 1 > /dev/null
-git add -A Cargo.lock "$manifest" 2> /dev/null || true
-if ! git diff --cached --quiet; then
-    git commit -m "IA sync: lock file and assistant dependencies follow the merged manifests"
-fi
+after_merge
