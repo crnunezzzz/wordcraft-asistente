@@ -6953,7 +6953,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-android"
-version = "0.15.2"
+version = "0.17.0"
 dependencies = [
  "android-activity",
  "craft-proof",
@@ -6972,7 +6972,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-assistant"
-version = "0.15.2"
+version = "0.17.0"
 dependencies = [
  "arboard",
  "craft-ui",
