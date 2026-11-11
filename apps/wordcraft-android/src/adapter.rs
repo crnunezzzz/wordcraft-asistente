@@ -70,7 +70,8 @@ impl Editor {
                 host_toolbar: Some(Default::default()),
                 file_dialog: Some(hook),
                 clipboard_html: Some(Box::new(move || html_clipboard.clipboard("html"))),
-                set_clipboard_html: Some(Box::new(move |html, text, _mathml| copy_clipboard.copy_html(html, text).is_ok())),
+                // (text, html, rtf, mathml): Android's clipboard takes the text and its HTML.
+                set_clipboard_rich: Some(Box::new(move |text, html, _rtf, _mathml| copy_clipboard.copy_html(html, text).is_ok())),
                 clipboard_picture: Some(Box::new(move || {
                     picture_clipboard.clipboard_image().map(wordcraft_ui_egui::paste_picture::ClipboardPicture::Encoded)
                 })),
@@ -101,11 +102,12 @@ impl Editor {
     pub fn ui(&mut self, ui: &mut Ui) {
         self.app.ui(ui);
     }
-    pub fn host_state(&mut self, open: bool, busy: bool, status: &str) {
+    pub fn host_state(&mut self, open: bool, busy: bool, status: &str, update: Option<String>) {
         if let Some(host) = &mut self.app.services.host_toolbar {
             host.assistant_open = open;
             host.busy = busy;
             host.status = status.into();
+            host.update = update;
         }
     }
     /// The interface size as a zoom over the system's display scale `native` (1.0: as

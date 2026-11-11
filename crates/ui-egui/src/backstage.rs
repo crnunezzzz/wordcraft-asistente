@@ -165,6 +165,19 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     go_to_page(app, id);
                 }
             }
+            // IA fork: File › Actualizar, from this build's own releases (`host_toolbar`).
+            let spanish = crate::i18n::current().code().starts_with("es");
+            if crate::host_toolbar::backstage_update(
+                ui,
+                &mut app.services.host_toolbar,
+                spanish,
+                vec2(200.0, 38.0),
+                (31.0, 52.0),
+                medium(14.0),
+                egui::Color32::WHITE,
+            ) {
+                app.ui.backstage = false;
+            }
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                 for (label, id) in bottom_links(app) {
                     let (r, resp) = ui.allocate_exact_size(vec2(200.0, 32.0), Sense::click());
