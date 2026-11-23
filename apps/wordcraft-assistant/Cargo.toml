@@ -18,8 +18,10 @@ egui = { workspace = true }
 craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
 zeroize = { version = "1", features = ["derive"] }
 image = { workspace = true }
-quick-xml = { workspace = true }
-zip = { workspace = true }
+# Our own versions of quick-xml and zip: the original moved to craft-xml in 0.19 and dropped
+# both from its workspace dependencies.
+quick-xml = "0.41"
+zip = { version = "3", default-features = false, features = ["deflate"] }
 
 # Desktop only: HTTPS to the providers, the plan CLIs and the tool bridge they call back.
 [target.'cfg(not(any(target_os = "android", target_arch = "wasm32")))'.dependencies]
